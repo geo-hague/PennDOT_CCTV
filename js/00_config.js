@@ -6,13 +6,20 @@
 // 511PA's own DataTables-backed list endpoint — the same one their /cctv
 // page calls. NOT part of PennDOT's formal (gated) Data Feed Request
 // process; this is the public map's own backing data, same category of
-// "undocumented but technically public" endpoint as NC/VA/MD/DE. See
-// project notes: PennDOT explicitly requires signup + a video license
-// agreement for their *official* data feed program, which this sidesteps
-// — a deliberate call for this project, not an oversight.
-// Needs a specific DataTables-style "query" JSON param (column defs,
-// paging, sort) — see buildCamerasUrl() below, not a plain GET.
-const CAMERAS_URL_BASE = 'https://www.511pa.com/List/GetData/Cameras';
+// "undocumented but technically public" endpoint as NC/VA/MD/DE — a
+// deliberate call for this project, not an oversight, since PennDOT does
+// explicitly require signup + a video license agreement for their
+// *official* data feed program. Needs a specific DataTables-style "query"
+// JSON param (column defs, paging, sort) — see buildCamerasUrl() in
+// 02_geo-utils.js, not a plain GET.
+//
+// Confirmed via a live "NetworkError" that 511pa.com doesn't send CORS
+// headers for third-party origins (only meant for its own map page to
+// call from its own domain) — routed through a tiny CORS-only proxy
+// instead, no secret involved (see pa-511-proxy/README.md for deploy
+// steps). Point this at your deployed worker's /List/GetData/Cameras path
+// once it's live.
+const CAMERAS_URL_BASE = 'https://penndotdms.m-c-hunt429.workers.dev/List/GetData/Cameras';
 const MIN_DISPLACEMENT_M = 40;     // min movement before recomputing bearing
 const BEARING_DISAGREE_DEG = 45;   // how much new bearing must differ to challenge current direction
 const BEARING_CONFIRM_COUNT = 2;   // consecutive disagreeing samples needed to flip direction
@@ -57,8 +64,9 @@ const COMMONS_FILEPATH = 'https://commons.wikimedia.org/wiki/Special:FilePath/';
 // mapIcons' itemId). See fetchMessageSignsIfNeeded() in 04_messagesigns.js
 // for the join logic. Like cameras, this is 511PA's own public map
 // backing data — not PennDOT's gated official Data Feed Request process.
-const MSG_SIGN_ICONS_URL = 'https://www.511pa.com/map/mapIcons/MessageSigns';
-const MSG_SIGN_LIST_URL_BASE = 'https://www.511pa.com/List/GetData/MessageSigns';
+// Same CORS issue as cameras above — routed through the same proxy.
+const MSG_SIGN_ICONS_URL = 'https://penndotdms.m-c-hunt429.workers.dev/map/mapIcons/MessageSigns';
+const MSG_SIGN_LIST_URL_BASE = 'https://penndotdms.m-c-hunt429.workers.dev/List/GetData/MessageSigns';
 const MSG_SIGN_URL = MSG_SIGN_LIST_URL_BASE; // kept for the "is DMS configured" guard elsewhere — real fetch logic builds both URLs itself
 const MSG_SIGN_RANGE_M = 16093.4;   // 10 miles
 const MSG_SIGN_POLL_MS = 30000;     // re-poll signs this often so a sign 10mi out
