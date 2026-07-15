@@ -44,7 +44,12 @@ const MAX_STREAM_RETRIES = 3;      // automatic retry attempts before showing a 
 // for I-95); MILE_MARKER is a clean numeric field (e.g. 16.00), unlike
 // DE's LEGEND_TEXT quirks.
 const MILEMARKER_QUERY_URL = 'https://gis.penndot.pa.gov/gis/rest/services/opendata/interstatemilemarkers/MapServer/0/query';
-const MILEMARKER_SEARCH_RADIUS_M = 900;  // ~0.56mi — wide enough to bracket the two nearest signs
+const MILEMARKER_SEARCH_RADIUS_M = 1800; // ~1.12mi — PA's interstate markers are spaced ~1 mile apart
+                                          // (confirmed), so the radius needs to exceed 1609m (1mi) to
+                                          // reliably catch a bracketing pair no matter where you are
+                                          // between them — standing almost exactly on one marker still
+                                          // needs to reach ~1609m in the other direction to find the
+                                          // next one. 1800m adds a margin over the bare minimum.
 const MILEMARKER_RECHECK_MS = 8000;      // how often we re-query for the current milepost
 
 // ---- Highway shield images (Wikipedia / Wikimedia Commons) ----
