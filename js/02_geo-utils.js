@@ -60,13 +60,39 @@ function normalizeHighwayName(raw) {
   return s;
 }
 
+// ---------- 511PA DataTables pagination ----------
+// Confirmed live: asking for length:2000/3000 still only ever returns 100
+// rows — the server silently caps each response at 100 regardless of what
+// length was requested. Both cameras (~1522 total) and DMS (~1195 total)
+// need multiple page requests to get everything; this is shared by both
+// loadCameras() below and fetchMessageSignsIfNeeded() in
+// 04_messagesigns.js. buildUrl(start, length) must return a full request
+// URL for that page.
+async function fetchAllDataTablesRows(buildUrl, pageSize = 100) {
+  let start = 0;
+  let all = [];
+  let total = Infinity;
+  while (start < total) {
+    const resp = await fetch(buildUrl(start, pageSize));
+    if (!resp.ok) throw new Error(`HTTP ${resp.status} at start=${start}`);
+    const json = await resp.json();
+    total = json.recordsTotal ?? (all.length + (json.data || []).length);
+    const page = json.data || [];
+    if (!page.length) break; // safety: stop if the server ever returns an empty page early
+    all = all.concat(page);
+    start += pageSize;
+  }
+  return all;
+}
+
 // ---------- Load static camera list ----------
 // 511PA's endpoint is a DataTables-backed list API — it needs a specific
 // "query" JSON param (column definitions, paging, sort) rather than a
 // plain GET, or it returns an empty data array with just the record
 // count. buildCamerasUrl() replicates the exact query the real /cctv page
-// sends (captured via DevTools), with `length` set comfortably above the
-// current recordsTotal (~1522) so everything comes back in one request.
+// sends (captured via DevTools); pagination (start/length) is filled in
+// per-page by fetchAllDataTablesRows() above, since a single request
+// only ever returns 100 rows no matter what length is requested.
 //
 // This is the richest camera schema of any state done so far: roadway and
 // direction are clean separate fields (direction already reads
@@ -81,7 +107,7 @@ function normalizeHighwayName(raw) {
 // cross-origin (which a request from a different site wouldn't have) or
 // is just informational — worth checking in practice once deployed;
 // cameras with that flag may simply fail to play.
-function buildCamerasUrl() {
+function buildCamerasUrl(start, length) {
   const query = {
     columns: [
       { data: null, name: '' },
@@ -96,8 +122,8 @@ function buildCamerasUrl() {
       { data: 9, name: '' },
     ],
     order: [{ column: 1, dir: 'asc' }, { column: 2, dir: 'asc' }],
-    start: 0,
-    length: 3000, // comfortably above the ~1522 total so everything returns in one page
+    start,
+    length,
     search: { value: '' },
   };
   return `${CAMERAS_URL_BASE}?query=${encodeURIComponent(JSON.stringify(query))}&lang=en-US`;
@@ -113,10 +139,7 @@ function parseWktPoint(wkt) {
 
 async function loadCameras() {
   try {
-    const resp = await fetch(buildCamerasUrl());
-    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-    const json = await resp.json();
-    const records = json.data || [];
+    const records = await fetchAllDataTablesRows((start, length) => buildCamerasUrl(start, length));
 
     allCameras = records
       .map(c => {
@@ -137,7 +160,8 @@ async function loadCameras() {
       })
       .filter(c => c !== null);
 
-    console.log(`Loaded ${allCameras.length} PA cameras.`);
+    setDebug({ cameraRecordCount: records.length, cameraParsedCount: allCameras.length });
+    console.log(`Loaded ${allCameras.length} PA cameras (of ${records.length} total records).`);
   } catch (err) {
     // Camera load failing (CORS block, network error, endpoint down, etc.)
     // must NOT stop the rest of the app from starting — init() awaits this

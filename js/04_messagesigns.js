@@ -5,13 +5,22 @@
 // ---------- DMS message signs ----------
 // 511PA splits sign data across two endpoints that have to be joined:
 // mapIcons gives { itemId, location: [lat, lon] } for every sign in one
-// plain GET (no pagination needed); the DataTables list endpoint gives
-// the actual roadway/direction/message content, keyed by the same id.
+// plain GET; the DataTables list endpoint gives the actual roadway/
+// direction/message content, keyed by the same id. The list endpoint caps
+// each response at 100 rows regardless of requested length — confirmed
+// live — so it goes through fetchAllDataTablesRows() (defined in
+// 02_geo-utils.js, shared with cameras) to page through all ~1195 rows.
+// mapIcons has no draw/recordsTotal/recordsFiltered fields at all (unlike
+// the DataTables endpoints), which is why it's assumed to return
+// everything in one shot rather than being paginated the same way — that
+// assumption is NOT independently confirmed though; if dmsParsedCount
+// stays suspiciously low even after the list-side pagination fix, a
+// mapIcons page cap we don't know about would be the next thing to check.
 // Both fetched in parallel each poll, joined by id, then mapped into the
 // { Id, Name, Roadway, DirectionOfTravel, Latitude, Longitude, Messages }
 // shape every function below already expects — same shape used for
 // VA/MD/DE, none of which needed changes below this point either.
-function buildMessageSignsListUrl() {
+function buildMessageSignsListUrl(start, length) {
   const query = {
     columns: [
       { data: null, name: '' },
@@ -26,8 +35,8 @@ function buildMessageSignsListUrl() {
       { data: 9, name: '' },
     ],
     order: [{ column: 1, dir: 'asc' }, { column: 2, dir: 'asc' }],
-    start: 0,
-    length: 2000, // comfortably above the ~1195 total so everything returns in one page
+    start,
+    length,
     search: { value: '' },
   };
   return `${MSG_SIGN_LIST_URL_BASE}?query=${encodeURIComponent(JSON.stringify(query))}&lang=en-US`;
@@ -55,14 +64,13 @@ async function fetchMessageSignsIfNeeded() {
     return;
   }
   try {
-    const [iconsResp, listResp] = await Promise.all([
-      fetch(MSG_SIGN_ICONS_URL),
-      fetch(buildMessageSignsListUrl()),
+    const [iconsJson, records] = await Promise.all([
+      fetch(MSG_SIGN_ICONS_URL).then(r => {
+        if (!r.ok) throw new Error(`icons HTTP ${r.status}`);
+        return r.json();
+      }),
+      fetchAllDataTablesRows((start, length) => buildMessageSignsListUrl(start, length)),
     ]);
-    if (!iconsResp.ok) throw new Error(`icons HTTP ${iconsResp.status}`);
-    if (!listResp.ok) throw new Error(`list HTTP ${listResp.status}`);
-    const iconsJson = await iconsResp.json();
-    const listJson = await listResp.json();
 
     // Location lookup: itemId -> { lat, lon }
     const locationsById = new Map();
@@ -73,7 +81,6 @@ async function fetchMessageSignsIfNeeded() {
       }
     });
 
-    const records = listJson.data || [];
     const parsed = records
       .map(r => {
         const loc = locationsById.get(String(r.DT_RowId));
