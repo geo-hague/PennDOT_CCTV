@@ -3,8 +3,25 @@
 // shares top-level `let`/`const` scope with the other js/*.js files.
 
 // ---------- Main position handling (shared by real GPS and simulator) ----------
-// ---------- Main position handling (shared by real GPS and simulator) ----------
+let handlePositionBusy = false; // guards against overlapping calls — see handlePosition() below
+
 async function handlePosition(lat, lon, source) {
+  if (handlePositionBusy) return;
+  handlePositionBusy = true;
+  try {
+    await handlePositionInner(lat, lon, source);
+  } catch (err) {
+    setDebug({
+      handlePositionError: err && err.message ? err.message : String(err),
+      handlePositionStack: err && err.stack ? String(err.stack).split('\n').slice(0, 4).join(' | ') : null,
+    });
+    console.error('handlePosition failed:', err);
+  } finally {
+    handlePositionBusy = false;
+  }
+}
+
+async function handlePositionInner(lat, lon, source) {
   lastKnownPos = { lat, lon };
 
   gpsDot.className = 'dot live';
@@ -140,6 +157,8 @@ function startSimulation() {
   }
 
   // Reset tracking state so the sim starts clean
+  clearDebug();
+  handlePositionBusy = false;
   posHistory = [];
   lastStableBearing = null;
   pendingBearing = null;
@@ -163,6 +182,9 @@ function startSimulation() {
   shieldDirEls = {};
   messageSigns = [];
   lastMsgSignFetch = 0;
+  msgBrowseActive = false;
+  msgBrowseList = [];
+  msgBrowseIndex = 0;
   activeSignId = null;
   lastSpokenMessage = null;
   shieldGroupEl.innerHTML = '';
