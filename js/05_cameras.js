@@ -179,12 +179,14 @@ function hideRetryUI(el) {
 // backoff, and finally a manual "tap to retry" button if all of that
 // fails — so a slow/dead camera never just sits there black forever
 // with no explanation or way to recover.
-// Appends the camera's scraped ?token=... (attached in loadCameras from
-// tokens.json). Falls back to the bare URL if a camera has no token (offline or
-// not captured at last scrape — it will 401, expected).
+// Builds the playable stream URL. Two PA-specific things:
+//  1. 511PA's feed gives .../chan-XXXX/index.m3u8, but index.m3u8 is gated on
+//     this system (401/sign-in) — the playable playlist is xflow.m3u8. Swap it.
+//  2. Append the camera's scraped ?token=... (attached in loadCameras from
+//     tokens.json). No token -> bare URL (will 401; expected for offline cams).
 function resolveStreamUrl(cam) {
-  if (cam.token) return cam.videoUrl + '?token=' + cam.token;
-  return cam.videoUrl;
+  const base = cam.videoUrl.replace(/\/index\.m3u8(\b|$)/i, '/xflow.m3u8');
+  return cam.token ? base + '?token=' + cam.token : base;
 }
 
 function attachStream(el, cam) {
