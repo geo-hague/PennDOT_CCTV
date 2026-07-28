@@ -40,10 +40,22 @@ async function run() {
   const records = await fetchAll();
   // Count cameras per RAW roadway string (that's what the /cctv filter uses),
   // keeping only Interstate / US / PA routes.
+  // Normalize the feed's roadway string to the hyphen form the /cctv filter
+  // expects (feed uses "I 95"/"US 22" style; the filter wants "I-95"/"US-22").
+  const normalizeRoadway = (raw) => {
+    const t = (raw || '').toUpperCase().trim();
+    let m = t.match(/\bI[-\s]?(\d+)\b/) || t.match(/INTERSTATE\s+(\d+)/);
+    if (m) return `I-${m[1]}`;
+    m = t.match(/\bUS[-\s]?(\d+)\b/);
+    if (m) return `US-${m[1]}`;
+    m = t.match(/\bPA[-\s]?(\d+)\b/) || t.match(/\bSR[-\s]?(\d+)\b/);
+    if (m) return `PA-${m[1]}`;
+    return null;
+  };
   const counts = {};
   for (const c of records) {
-    const rw = (c.roadway || '').trim();
-    if (/^(I|US|PA)[-\s]?\d/i.test(rw)) counts[rw] = (counts[rw] || 0) + 1;
+    const rw = normalizeRoadway(c.roadway);
+    if (rw) counts[rw] = (counts[rw] || 0) + 1;
   }
   const chunks = [];
   let id = 0;
