@@ -1,0 +1,73 @@
+name: Refresh Camera Tokens (PA)
+
+on:
+  schedule:
+    - cron: '0 8,20 * * *'   # twice daily
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+jobs:
+  setup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    outputs:
+      chunks: ${{ steps.gen.outputs.chunks }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - id: gen
+        run: echo "chunks=$(node gen-chunks.js)" >> "$GITHUB_OUTPUT"
+
+  scrape:
+    needs: setup
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      max-parallel: 20
+      matrix:
+        chunk: ${{ fromJson(needs.setup.outputs.chunks) }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - run: npm install puppeteer
+      - name: Scrape page
+        env:
+          ROADWAY: ${{ matrix.chunk.roadway }}
+          START: ${{ matrix.chunk.start }}
+          OUT_FILE: tokens-part.json
+        run: node scrape-tokens.js
+      - uses: actions/upload-artifact@v4
+        with:
+          name: tokens-${{ matrix.chunk.id }}
+          path: tokens-part.json
+          if-no-files-found: warn
+
+  merge:
+    needs: scrape
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - uses: actions/download-artifact@v4
+        with:
+          path: parts
+      - run: node combine-tokens.js
+      - name: Commit tokens.json
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add tokens.json
+          git diff --staged --quiet && echo "No changes" && exit 0
+          git commit -m "Refresh camera tokens"
+          git pull --rebase origin main
+          git push
