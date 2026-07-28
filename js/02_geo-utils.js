@@ -137,9 +137,32 @@ function parseWktPoint(wkt) {
   return { lon: parseFloat(m[1]), lat: parseFloat(m[2]) };
 }
 
+// Fresh stream tokens, scraped on a schedule and committed as tokens.json
+// (chan -> token). 511PA's streams are token-gated now; the live camera feed
+// only gives tokenless chan-XXXX/index.m3u8 base URLs, so we attach the token
+// here by matching the chan in each videoUrl. Returns a Map(chan -> token).
+async function loadStreamTokens() {
+  try {
+    const resp = await fetch('./tokens.json', { cache: 'no-store' });
+    if (!resp.ok) return new Map();
+    const json = await resp.json();
+    const m = new Map();
+    for (const e of (json.entries || [])) if (e.chan) m.set(e.chan.toLowerCase(), e.token);
+    return m;
+  } catch (e) { return new Map(); }
+}
+
+function chanOf(url) {
+  const m = (url || '').match(/(chan-[0-9a-zA-Z_]+)/i);
+  return m ? m[1].toLowerCase() : null;
+}
+
 async function loadCameras() {
   try {
-    const records = await fetchAllDataTablesRows((start, length) => buildCamerasUrl(start, length));
+    const [records, tokenByChan] = await Promise.all([
+      fetchAllDataTablesRows((start, length) => buildCamerasUrl(start, length)),
+      loadStreamTokens(),
+    ]);
 
     allCameras = records
       .map(c => {
@@ -156,12 +179,14 @@ async function loadCameras() {
           direction: c.direction || '', // already "Eastbound"/etc — no parsing needed
           location: c.location || '',
           videoUrl,
+          token: tokenByChan.get(chanOf(videoUrl)) || null,
         };
       })
       .filter(c => c !== null);
 
-    setDebug({ cameraRecordCount: records.length, cameraParsedCount: allCameras.length });
-    console.log(`Loaded ${allCameras.length} PA cameras (of ${records.length} total records).`);
+    const withToken = allCameras.filter(c => c.token).length;
+    setDebug({ cameraRecordCount: records.length, cameraParsedCount: allCameras.length, camerasWithToken: withToken });
+    console.log(`Loaded ${allCameras.length} PA cameras (${withToken} with tokens) of ${records.length} records.`);
   } catch (err) {
     // Camera load failing (CORS block, network error, endpoint down, etc.)
     // must NOT stop the rest of the app from starting — init() awaits this

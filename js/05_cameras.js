@@ -105,9 +105,18 @@ let slotOrder = [slotEls[0], slotEls[1]]; // current top-to-bottom DOM order
 
 function destroySlotEl(el) {
   const hls = hlsByEl.get(el);
+  const hadStream = !!hls || !!(el.querySelector('video') && el.querySelector('video').src);
   if (hls) {
     try { hls.detachMedia(); hls.destroy(); } catch (e) {}
     hlsByEl.delete(el);
+  }
+  // Release the <video>'s own connection too, but only if a stream was actually
+  // attached — running this on an empty slot during a fresh page load wedges
+  // the element so the first stream never starts. Browsing rebuilds streams
+  // rapidly; without this, connections pile up until the server 401s new ones.
+  if (hadStream) {
+    const v = el.querySelector('video');
+    if (v) { try { v.pause(); v.removeAttribute('src'); v.load(); } catch (e) {} }
   }
   if (el._manifestTimeout) {
     clearTimeout(el._manifestTimeout);
@@ -170,6 +179,14 @@ function hideRetryUI(el) {
 // backoff, and finally a manual "tap to retry" button if all of that
 // fails — so a slow/dead camera never just sits there black forever
 // with no explanation or way to recover.
+// Appends the camera's scraped ?token=... (attached in loadCameras from
+// tokens.json). Falls back to the bare URL if a camera has no token (offline or
+// not captured at last scrape — it will 401, expected).
+function resolveStreamUrl(cam) {
+  if (cam.token) return cam.videoUrl + '?token=' + cam.token;
+  return cam.videoUrl;
+}
+
 function attachStream(el, cam) {
   const video = el.querySelector('video');
   setLoadingState(el, true);
@@ -202,14 +219,26 @@ function attachStream(el, cam) {
     setLoadingState(el, true);
     armManifestTimeout();
 
+    const streamUrl = resolveStreamUrl(cam);
+    // Attach the token to EVERY hls.js request (manifest AND segments); some
+    // servers enforce it on segments too, and without it the stream dies ~1s in.
+    const tokMatch = streamUrl.match(/[?&](token=[^&]+)/);
+    const tokenParam = tokMatch ? tokMatch[1] : null;
+
     if (typeof Hls !== 'undefined' && Hls.isSupported()) {
       const hls = new Hls({
         maxBufferLength: 6,
         lowLatencyMode: true,
         manifestLoadingTimeOut: 10000,
         manifestLoadingMaxRetry: 2,
+        xhrSetup: (xhr, url) => {
+          if (tokenParam && !/[?&]token=/.test(url)) {
+            const sep = url.includes('?') ? '&' : '?';
+            xhr.open('GET', url + sep + tokenParam, true);
+          }
+        },
       });
-      hls.loadSource(cam.videoUrl);
+      hls.loadSource(streamUrl);
       hls.attachMedia(video);
       hlsByEl.set(el, hls);
 
@@ -233,7 +262,7 @@ function attachStream(el, cam) {
         }
       });
     } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
-      video.src = cam.videoUrl;
+      video.src = streamUrl;
       video.addEventListener('loadedmetadata', () => {
         clearManifestTimeout();
         setLoadingState(el, false);
