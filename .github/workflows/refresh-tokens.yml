@@ -1,4 +1,4 @@
-name: Refresh Camera Tokens
+name: Refresh Camera Tokens (PA)
 
 on:
   schedule:
@@ -20,7 +20,15 @@ jobs:
         with:
           node-version: '20'
       - id: gen
-        run: echo "chunks=$(node gen-chunks.js)" >> "$GITHUB_OUTPUT"
+        run: |
+          CHUNKS="$(node gen-chunks.js)"
+          echo "gen-chunks output length: ${#CHUNKS}"
+          echo "first 300 chars: ${CHUNKS:0:300}"
+          if [ -z "$CHUNKS" ] || [ "$CHUNKS" = "[]" ]; then
+            echo "::error::gen-chunks produced no chunks (see stderr above for the crash/fetch error)"
+            exit 1
+          fi
+          echo "chunks=$CHUNKS" >> "$GITHUB_OUTPUT"
 
   scrape:
     needs: setup
