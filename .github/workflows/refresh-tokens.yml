@@ -74,7 +74,7 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add tokens.json
+          git add docs/tokens.json
           git diff --staged --quiet && echo "No changes" && exit 0
           git commit -m "Refresh camera tokens"
           git pull --rebase origin main
