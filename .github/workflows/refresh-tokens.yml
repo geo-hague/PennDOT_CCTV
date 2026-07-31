@@ -1,4 +1,4 @@
-name: Refresh Camera Tokens (PA)
+name: Refresh Camera Tokens
 
 on:
   schedule:
