@@ -22,12 +22,25 @@ function buildCamerasUrl(start, length) {
   return `${CAMERAS_URL_BASE}?query=${encodeURIComponent(JSON.stringify(query))}&lang=en-US`;
 }
 
+async function fetchPage(start) {
+  // Retry transient failures (e.g. a 502 from the proxy/511PA) a few times
+  // before giving up — one bad page shouldn't abort the whole run.
+  let lastErr = null;
+  for (let attempt = 0; attempt < 5; attempt++) {
+    try {
+      const resp = await fetch(buildCamerasUrl(start, 100));
+      if (resp.ok) return await resp.json();
+      lastErr = new Error(`HTTP ${resp.status} at start=${start}`);
+    } catch (e) { lastErr = e; }
+    await new Promise(r => setTimeout(r, 1000 * (attempt + 1)));
+  }
+  throw lastErr;
+}
+
 async function fetchAll() {
   let start = 0, all = [], total = Infinity;
   while (start < total) {
-    const resp = await fetch(buildCamerasUrl(start, 100));
-    if (!resp.ok) throw new Error(`HTTP ${resp.status} at start=${start}`);
-    const json = await resp.json();
+    const json = await fetchPage(start);
     total = json.recordsTotal ?? (all.length + (json.data || []).length);
     const page = json.data || [];
     if (!page.length) break;
