@@ -48,8 +48,8 @@ async function run() {
     if (m) return `I-${m[1]}`;
     m = t.match(/\bUS[-\s]?(\d+)\b/);
     if (m) return `US-${m[1]}`;
-    m = t.match(/\bPA[-\s]?(\d+)\b/) || t.match(/\bSR[-\s]?(\d+)\b/);
-    if (m) return `PA-${m[1]}`;
+    // PA-/SR- state routes intentionally excluded — Interstates and US routes
+    // only (skips ~172 PA-route cameras that aren't needed).
     return null;
   };
   const counts = {};
