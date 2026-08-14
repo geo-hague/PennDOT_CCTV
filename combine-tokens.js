@@ -17,5 +17,5 @@ function walk(d) {
 }
 if (fs.existsSync(dir)) walk(dir);
 const entries = Object.values(all);
-fs.writeFileSync('tokens.json', JSON.stringify({ updated: new Date().toISOString(), count: entries.length, entries }, null, 2), 'utf8');
+fs.writeFileSync('docs/tokens.json', JSON.stringify({ updated: new Date().toISOString(), count: entries.length, entries }, null, 2), 'utf8');
 console.log(`Combined ${entries.length} tokens from ${files} shard files -> tokens.json`);
